@@ -1,0 +1,41 @@
+import pandas as pd
+import numpy as np
+
+# loading data
+df = pd.read_csv('SOL_USDT_15m_historical.csv', index_col='datetime', parse_dates=True)
+
+# check if is continues 
+def check_data_continuity(df, timeframe='15T'):
+    # build full timestamps 
+    full_range = pd.date_range(start=df.index.min(), end=df.index.max(), freq=timeframe)
+    missing_times = full_range.difference(df.index)
+    
+    if len(missing_times) > 0:
+        print(f"found {len(missing_times)} timestamps missing：")
+        print(missing_times)
+    else:
+        print("data no missing")
+        
+    return missing_times
+
+# deling the missing data
+def handle_missing_data(df):
+    df = df.interpolate(method='linear')  # liner
+    return df
+
+# check the error 
+def handle_outliers(df, threshold=3):
+    from scipy.stats import zscore
+    # count Z-score
+    z_scores = np.abs(zscore(df[['open', 'high', 'low', 'close', 'volume']]))
+    # fliter the error
+    df = df[(z_scores < threshold).all(axis=1)]
+    return df
+
+# exclut the data 
+missing_times = check_data_continuity(df)
+df = handle_missing_data(df)
+df = handle_outliers(df)
+
+print("\n data_cleaning：")
+print(df.head())
