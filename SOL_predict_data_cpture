@@ -1,0 +1,86 @@
+def fetch_15m_ohlcv(exchange, symbol, timeframe, start_time):
+    all_data = []
+    since = exchange.parse8601(start_time)
+    timeframe_ms = 15 * 60 * 1000  # 15mins in ms
+    
+    while True:
+        try:
+            # capture K inclut since 
+            ohlcv = exchange.fetch_ohlcv(
+                symbol=symbol,
+                timeframe=timeframe,
+                since=since,
+                limit=500
+            )
+            
+            if not ohlcv:
+                print(f"[{pd.Timestamp.now()}] all data captureted，count {len(all_data)} K")
+                break
+                
+            # Check countinue in case redundate
+            if all_data and ohlcv[0][0] <= all_data[-1][0]:
+                print(f"check repeat，auto_jumpted {ohlcv[0][0]} → {all_data[-1][0]}")
+                since = all_data[-1][0] + timeframe_ms
+                continue
+                
+            all_data.extend(ohlcv)
+            last_timestamp = ohlcv[-1][0]
+            since = last_timestamp + timeframe_ms  # right timestampe（index 0）
+            
+            # show process（show every part in 500）
+            if len(ohlcv) == 500:
+                progress_time = exchange.iso8601(last_timestamp)
+                print(f"[{pd.Timestamp.now()}] capture {progress_time} | total {len(all_data)} times")
+                
+            # keep API rules
+            time.sleep(exchange.rateLimit / 1000)
+            
+        except ccxt.NetworkError as e:
+            print(f"weberror: {e}，10s retry...")
+            time.sleep(10)
+        except ccxt.ExchangeError as e:
+            print(f"app error: {e}，terminated")
+            break
+        except Exception as e:
+            print(f"nuknow error: {e}，terminted")
+            break
+    
+    return all_data
+
+# sample
+if __name__ == "__main__":
+    exchange = ccxt.binance({
+        'enableRateLimit': True,
+        'options': {
+            'adjustForTimeDifference': True  # auto judge timestamp
+        }
+    })
+    
+    # capture SOL K line from 2020
+    
+    data = fetch_15m_ohlcv(
+        exchange=exchange,
+        symbol='SOL/USDT',
+        timeframe='15m',
+        start_time='2020-01-01T00:00:00Z'
+    )
+    
+    # trans to DataFrame
+    df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms')
+    df.set_index('datetime', inplace=True)
+    
+    # validation
+    print("\data validation：")
+    print("1. if 15mins tiestapms：")
+    time_diff = df.index.to_series().diff().value_counts()
+    print(time_diff.head())
+    
+    print("\n2. start_end time range：")
+    print(f"start_time：{df.index[0]}") 
+    print(f"end_time：{df.index[-1]}")
+
+    # save data
+    df.to_csv('SOL_USDT_15m_historical.csv', index=True)
+    print("\ndata been save to  SOL_USDT_15m_historical.csv")
+df # show the df
