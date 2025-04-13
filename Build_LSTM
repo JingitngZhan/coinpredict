@@ -1,0 +1,78 @@
+# find feature 
+def add_technical_indicators(df):
+    # SMA
+    df['sma_3'] = df['close'].rolling(window=3*24*4).mean()  # 3d（15mins）
+    df['sma_5'] = df['close'].rolling(window=5*24*4).mean()  # 5d
+    df['sma_14'] = df['close'].rolling(window=14*24*4).mean()  # 14d
+    
+    # RSI
+    delta = df['close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / loss
+    df['rsi'] = 100 - (100 / (1 + rs))
+    
+    # MACD
+    exp1 = df['close'].ewm(span=12, adjust=False).mean()
+    exp2 = df['close'].ewm(span=26, adjust=False).mean()
+    df['macd'] = exp1 - exp2
+    df['signal'] = df['macd'].ewm(span=9, adjust=False).mean()
+    
+    # remove Nan
+    df.dropna(inplace=True)
+    return df
+
+# fether added
+df = add_technical_indicators(df)
+
+print("\nafter added：")
+print(df.head())
+
+from sklearn.preprocessing import MinMaxScaler
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense, Dropout
+import numpy as np
+
+# pre-processing
+def prepare_data(df, target_cols, lookback=60, test_size=0.2):
+    # capture the data
+    target_indices = [df.columns.get_loc(col) for col in target_cols]
+    
+    # normalization
+    scaler = MinMaxScaler()
+    scaled_data = scaler.fit_transform(df)
+    
+    # build time series
+    X, y = [], []
+    for i in range(lookback, len(scaled_data)):
+        X.append(scaled_data[i-lookback:i, :])  # use all feather
+        y.append(scaled_data[i, target_indices])  # target
+    
+    X, y = np.array(X), np.array(y)
+    
+    # split train and testing
+    split = int(len(X) * (1 - test_size))
+    X_train, X_test = X[:split], X[split:]
+    y_train, y_test = y[:split], y[split:]
+    
+    return X_train, X_test, y_train, y_test, scaler
+
+# build LSTM
+def build_lstm_model(input_shape):
+    model = Sequential()
+    model.add(LSTM(50, return_sequences=True, input_shape=input_shape))
+    model.add(Dropout(0.2))
+    model.add(LSTM(50, return_sequences=False))
+    model.add(Dropout(0.2))
+    model.add(Dense(25))
+    model.add(Dense(2))  # input the higherst and lowest 
+    model.compile(optimizer='adam', loss='mean_squared_error')
+    return model
+
+# prepare data
+target_cols = ['high', 'low']
+X_train, X_test, y_train, y_test, scaler = prepare_data(df, target_cols)
+
+# build and train data
+model = build_lstm_model((X_train.shape[1], X_train.shape[2]))
+history = model.fit(X_train, y_train, epochs=20, batch_size=32, validation_data=(X_test, y_test))
