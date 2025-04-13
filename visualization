@@ -1,0 +1,20 @@
+def inverse_transform(scaler, data, target_cols):
+    dummy = np.zeros((len(data), scaler.n_features_in_))
+    dummy[:, -len(target_cols):] = data
+    return scaler.inverse_transform(dummy)[:, -len(target_cols):]
+
+# un-normailzation
+y_test_inv = inverse_transform(scaler, y_test, target_cols)
+y_pred_inv = inverse_transform(scaler, y_pred, target_cols)
+
+# visualization
+import matplotlib.pyplot as plt
+
+plt.figure(figsize=(14, 7))
+plt.plot(y_test_inv[:, 0], label='actural highest')
+plt.plot(y_pred_inv[:, 0], label='predict highest')
+plt.plot(y_test_inv[:, 1], label='actual lowest')
+plt.plot(y_pred_inv[:, 1], label='predict lowest')
+plt.legend()
+plt.title('price VS')
+plt.show()
